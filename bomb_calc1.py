@@ -1,7 +1,6 @@
 """This module's purpose is to simulate a bomber attacking a player. Tether Bomber's use Siphoning Tether followed by Sap Essence. 
 Proximity Detonation is also a skilled that is precasted before the bomb but is hard to simulate because it scales with amount players hit.
-The meta at the time for a bomber was to wear Mechanical Acuity which gave 100% critical rating for 5 seconds, make critical chance = 1.
-This was paired with the set Vicious Death causing a player to explode and hurt nearby allies within 5 meters."""
+It is assumed bomber is wearing the set Vicious Death."""
 
 from random import randint
 from typing import Union
