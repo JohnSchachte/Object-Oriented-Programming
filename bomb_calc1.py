@@ -1,10 +1,14 @@
 """This module's purpose is to simulate a bomber attacking a player. Tether Bomber's use Siphoning Tether followed by Sap Essence. 
 Proximity Detonation is also a skilled that is precasted before the bomb but is hard to simulate because it scales with amount players hit.
-The meta at the time for a bomber was to wear Mechanical Acuity which gave 100% critical rating for 5 seconds, make critical chance = 1.
-This was paired with the set Vicious Death causing a player to explode and hurt nearby allies within 5 meters."""
+It is assumed bomber is wearing the set Vicious Death."""
 
 from random import randint
-from typing import Union
+from typing import Optional, Union
+
+def base_damage_func(mitigation: float, tooltip: float, attacker_bonus: float, mitigation_bonus: float) -> float:
+    """Takes in attacker and mitigation bonuses and applies it to the base damage."""
+    result: float = tooltip * (1 - mitigation_bonus + attacker_bonus) * mitigation
+    return result
 
 
 def mitigation_formula(resistance, penetration) -> float:
@@ -22,7 +26,9 @@ def crit_modifier_formula(crit_resistance, crit_multiplier) -> float:
     """Calculates the critical strike damage modifier based on the critical resistance of Zergling and bomber's critical ddamage multiplier."""
     crit_modifier: float = 0.0
     crit_resistance = crit_resistance / 6800
-    crit_modifier = crit_multiplier
+    crit_modifier = crit_multiplier - crit_resistance
+    if crit_modifier > 2.25:
+        crit_modifier = 2.25
     return crit_modifier
 
 
@@ -35,7 +41,10 @@ def skill_tooltip_func(skill_type: str, magicka: int, spell_damage: int, ult: in
     if skill_type == "soul tether" or skill_type == "tether":
         coefficient_a = 0.160077
         coefficient_b = 1.68057
-    skill: float = (coefficient_a * magicka) + (coefficient_b * (spell_damage + ult + strike_from_shadow))
+    if skill_type != "sap essence" and skill_type != "sap" and skill_type != "tether" and skill_type != "soul tether":
+        coefficient_a: float = float(input("What is magicka coefficient? "))
+        coefficient_b: float = float(input("what is the spell damage coefficient? "))
+    skill: float = (coefficient_a * magicka) + (coefficient_b * (spell_damage + ult + strike_from_shadow)) + 500
     print(f"Skill Tooltip: {skill}")
     return skill
 
@@ -54,10 +63,12 @@ class Zergling:
     """Class that stores important mitigation stats of player defending. Zergling is a name for a player who stacks in a group and is suspectible to being bombed."""
     resistance: int
     crit_resistance: float
-    health: float
+    health: int
+    cumulative_mitigation: float
     healing: int
+    shield: int
 
-    def __init__(self, resistance: Union[int, None] = None, crit_resistance: Union[float, None] = None, health: Union[int, None] = None, healing: Union[int, None] = None):
+    def __init__(self, resistance: Optional[int] = None, crit_resistance: Optional[float] = None, health: Optional[int] = None, cumulative_mitigation: Optional[float] = None, healing: Optional[int] = None, shield: Optional[int] = None):
         """Initializes attributes for Zergling class."""
         if resistance == None:
             self.resistance = input("how much resistance does the bot have? ")
@@ -86,14 +97,32 @@ class Zergling:
         else:
             self.health = health
 
+        if cumulative_mitigation == None:
+            self.cumulative_mitigation = int(input("How much cumulative_mitigation does Zergling have? "))
+            if self.cumulative_mitigation == "":
+                self.cumulative_mitigation = 0
+            else:
+                self.cumulative_mitigation = int(self.cumulative_mitigation)
+        else:
+            self.cumulative_mitigation = cumulative_mitigation
+
         if healing == None:
             self.healing = input("How much does the target heal per second?")
             if self.healing == "":
-                self.healing == 0
+                self.healing = 0
             else:
                 self.healing = int(self.healing)
         else:
             self.healing = healing
+        if shield == None:
+            self.shield = input("How much does the target shield per second?")
+            if self.shield == "":
+                self.shield = 0
+            else:
+                self.shield = int(self.shield)
+        else:
+            self.shield = shield
+        
 
 
 class Bomber:
@@ -104,13 +133,14 @@ class Bomber:
     light_armor: float 
     medium_armor: float
     divines: float
+    cumulative_attacker_bonus: float
     ult: int
     mundus: str
     race: str
     weapon: str
     weapon_trait: str
 
-    def __init__(self, magicka: Union[int, None] = None, spell_damage: Union[int, None] = None, crit_percent: Union[float, None] = None, light_armor: Union[float, None] = None, medium_armor: Union[float, None] = None, divines: Union[float, None] = None, ult: Union[int, None] = None, mundus: Union[str, None] = None, race: Union[str, None] = None, weapon: Union[str, None] = None, weapon_trait: Union[None, str] = None):
+    def __init__(self, magicka: Union[int, None] = None, spell_damage: Union[int, None] = None, crit_percent: Union[float, None] = None, light_armor: Union[float, None] = None, medium_armor: Union[float, None] = None, divines: Union[float, None] = None, cumulative_attacker_bonus: Optional[float] = None, ult: Union[int, None] = None, mundus: Union[str, None] = None, race: Union[str, None] = None, weapon: Union[str, None] = None, weapon_trait: Union[None, str] = None):
         """Initializes attributes for Bomber class."""
         if magicka == None:
             self.magicka = input("what is the max mag? ")
@@ -120,6 +150,7 @@ class Bomber:
                 self.magicka = int(self.magicka)
         else:
             self.magicka = magicka
+
         if spell_damage == None:
             self.spell_damage = input("what is the spell damage? ")
             if self.spell_damage == "":
@@ -128,6 +159,7 @@ class Bomber:
                 self.spell_damage = int(self.spell_damage)
         else:
             self.spell_damage = spell_damage
+
         if crit_percent == None:
             self.crit_percent = input("what is the chance of doing critical damage? ")
             if self.crit_percent == "":
@@ -136,6 +168,7 @@ class Bomber:
                 self.crit_percent = float(self.crit_percent)
         else:
             self.crit_percent = crit_percent
+
         if light_armor == None:
             self.light_armor = input("how many light pieces you wearing boss? no judgement. ")
             if self.light_armor == "":
@@ -144,6 +177,7 @@ class Bomber:
                 self.light_armor = float(self.light_armor)
         else:
             self.light_armor = light_armor
+
         if medium_armor == None:
             self.medium_armor = input("how many medium pieces you wearing boss? no judgement. ")
             if self.medium_armor == "":
@@ -151,6 +185,7 @@ class Bomber:
             else:
                 self.medium_armor = float(self.medium_armor)
         self.medium_armor = medium_armor
+
         if divines == None:
             self.divines = input("how many divines you wearing boss? no judgement. ")
             if self.divines == "":
@@ -159,6 +194,16 @@ class Bomber:
                 self.divines = float(self.divines)
         else:
             self.divines = divines
+
+        if cumulative_attacker_bonus == None:
+            self.cumulative_attacker_bonus = input("how many cumulative_attacker_bonus you wearing boss? no judgement. ")
+            if self.cumulative_attacker_bonus == "":
+                self.cumulative_attacker_bonus = 0.0
+            else:
+                self.cumulative_attacker_bonus = float(self.cumulative_attacker_bonus)
+        else:
+            self.cumulative_attacker_bonus = cumulative_attacker_bonus
+
         if ult == None:            
             self.ult = input('How much Ultimate are you packing? ')
             if self.ult == "":
@@ -167,18 +212,22 @@ class Bomber:
                 self.ult = int(self.ult)
         else:
             self.ult = ult
+
         if mundus == None:
             self.mundus = input("What mundus is used? (only shadow matters) ")
         else:
             self.mundus = mundus
+
         if race == None:
             self.race = input("what race are you? ")
         else:
             self.race = race
+
         if weapon == None:
             self.weapon = input("what type of weapon?(only axe and mace matter) ")
         else:
             self.weapon = weapon
+
         if weapon_trait == None:
             self.weapon_trait = input("what trait is on the weapon? (Only sharpened matters) ")
         else:
@@ -240,11 +289,13 @@ class Bomber:
     def vicious_death_proc(self, defending: list[Zergling], vd_counter: int) -> list[Zergling]:
         """Vicious death damage when proc'd (when procedural condition is met). Proc condition is a defending player being dealt a killer blow."""
         living_zerglings: list[Zergling] = []
+        new_vd: int = 0
         for zergling in defending:
             i: int = 0
             while i < vd_counter:
                 mitigation: float = mitigation_formula(zergling.resistance, self.penetration_formula())
-                base_damage: float = mitigation * vd_tooltip_func(self.magicka, self.spell_damage, self.ult)
+                tooltip: float = vd_tooltip_func(self.magicka, self.spell_damage, self.ult)
+                base_damage: float = base_damage_func(mitigation, tooltip, self.cumulative_attacker_bonus, zergling.cumulative_mitigation)
                 if self.crit_chance_func():
                     crit_modifier: float = crit_modifier_formula(zergling.crit_resistance, self.crit_multiplier_func())
                     damage: float = base_damage * crit_modifier
@@ -253,12 +304,17 @@ class Bomber:
                 zergling.health = zergling.health - damage
                 if zergling. health <= 0:
                     print("vd has killed zergling.")
+                    # another proc will affect the subsequent zerglings.
+                    new_vd += 1
+                    # this zergling has perished so we will break the loop condition and move onward.
                     i += vd_counter
-                    vd_counter += 1
                 else:
                     zergling.health += zergling.healing
             if zergling.health > 0:
                 living_zerglings.append(zergling)
+        # base case. once no new vd's are produced we can return the living list of zerglings.
+        if new_vd > 0:
+            self.vicious_death_proc(living_zerglings, new_vd)
         return living_zerglings
 
     def first_attack(self, defending: Union[Zergling, list[Zergling]]) -> Union[list, Zergling]:
@@ -267,7 +323,8 @@ class Bomber:
         alive: list = []
         if isinstance(defending, Zergling):
             mitigation: float = mitigation_formula(defending.resistance, self.penetration_formula())
-            base_damage: float = mitigation * skill_tooltip_func(skill_type, self.magicka, self.spell_damage, self.ult)
+            tooltip: float = skill_tooltip_func(skill_type, self.magicka, self.spell_damage, self.ult)
+            base_damage: float = base_damage_func(mitigation, tooltip, self.cumulative_attacker_bonus, defending.cumulative_mitigation)
             crit_modifier: float = crit_modifier_formula(defending.crit_resistance, self.crit_multiplier_func())
             damage: float = base_damage * crit_modifier
             print(f"Damage that was dealt = {damage}")
@@ -282,7 +339,8 @@ class Bomber:
             vd_counter: int = 0
             for i in range(len(defending)):
                 mitigation: float = mitigation_formula(defending[i].resistance, self.penetration_formula())
-                base_damage: float = mitigation * skill_tooltip_func(skill_type, self.magicka, self.spell_damage, self.ult)
+                tooltip: float = skill_tooltip_func(skill_type, self.magicka, self.spell_damage, self.ult)
+                base_damage: float = base_damage_func(mitigation, tooltip, self.cumulative_attacker_bonus, defending[i].cumulative_mitigation)    
                 crit_modifier: float = crit_modifier_formula(defending[i].crit_resistance, self.crit_multiplier_func())
                 damage: float = base_damage * crit_modifier
                 print(f"Damage that was dealt = {damage}")
@@ -305,7 +363,8 @@ class Bomber:
         skill_type: str = input("What skill are we performance? ")
         if isinstance(defending, Zergling):
             mitigation: float = mitigation_formula(defending.resistance, self.penetration_formula())
-            base_damage: float = mitigation * skill_tooltip_func(skill_type, self.magicka, self.spell_damage, self.ult)
+            tooltip: float = skill_tooltip_func(skill_type, self.magicka, self.spell_damage, self.ult)
+            base_damage: float = base_damage_func(mitigation, tooltip, self.cumulative_attacker_bonus, defending.cumulative_mitigation)
             if self.crit_chance_func():
                 crit_modifier: float = crit_modifier_formula(defending.crit_resistance, self.crit_multiplier_func())
                 damage: float = base_damage * crit_modifier
@@ -324,7 +383,8 @@ class Bomber:
             alive: list = []
             for i in range(len(defending)):
                 mitigation: float = mitigation_formula(defending[i].resistance, self.penetration_formula())
-                base_damage: float = mitigation * skill_tooltip_func(skill_type, self.magicka, self.spell_damage, self.ult)
+                tooltip: float = skill_tooltip_func(skill_type, self.magicka, self.spell_damage, self.ult)
+                base_damage: float = base_damage_func(mitigation, tooltip, self.cumulative_attacker_bonus, defending[i].cumulative_mitigation)
                 if self.crit_chance_func():
                     crit_modifier: float = crit_modifier_formula(defending[i].crit_resistance, self.crit_multiplier_func())
                     damage: float = base_damage * crit_modifier
@@ -346,16 +406,20 @@ class Bomber:
 
 def main() -> None:
     """Starting place."""
-    Tremaine: Bomber = Bomber(37000, 4500, 55, 5, 2, 7, 500, 'thief', 'elf', 'dagger', 'nirn')
-    Sinned: Zergling = Zergling(25000, 1500, 26000, 5000)
-    a_zergling: Zergling = Zergling(30000, 3000, 35000, 5000)
-    b_zergling: Zergling = Zergling(25000, 2700, 28000, 5000)
-    c_zergling: Zergling = Zergling(25000, 2700, 28000, 5000)
-    d_zergling: Zergling = Zergling(25000, 2700, 28000, 5000)
-    myList: list[Zergling] = [a_zergling, Sinned, b_zergling, c_zergling, d_zergling]
-    myList = Tremaine.first_attack(myList)
-    if len(myList) > 0:
-        myList = Tremaine.subsequent_attack(myList)
+    Tremaine: Bomber = Bomber(37573, 4722 + 492, 35.6, 2, 5, 7, .25, 500, 'shadow', 'elf', 'mace', 'precise')
+    # Sinned: Zergling = Zergling(25000, 1500, 26000, 5000)
+    a_zergling: Zergling = Zergling(20000, 2000, 35000, 5000)
+    b_zergling: Zergling = Zergling(25000, 2700, 30000, 5000)
+    # c_zergling: Zergling = Zergling(25000, 2700, 30000, 5000)
+    # d_zergling: Zergling = Zergling(25000, 2700, 30000, 5000)
+    three_mil: Zergling = Zergling(18250, 0, 3000000, 0, 0, 0)
+    # myList: list[Zergling] = [a_zergling, Sinned, b_zergling, c_zergling, d_zergling]
+    # Tremaine.first_attack(three_mil)
+    Tremaine.first_attack(a_zergling)
+    Tremaine.frist_attack(b_zergling)
+    # Tremaine.subsequent_attack(three_mil)
+    # if len(myList) > 0:
+    #     myList = Tremaine.subsequent_attack(myList)
 
 if __name__ == '__main__':
     main()
